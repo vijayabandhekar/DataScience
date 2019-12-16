@@ -1,0 +1,119 @@
+import pandas as pd
+import os
+from sklearn import preprocessing, model_selection
+import seaborn as snb
+import tpot
+
+dir = 'D:\Vijaya\Data Science\ML Programs\Kaggle - titanic'
+titanic_train = pd.read_csv(os.path.join(dir, 'train.csv'))
+print(titanic_train.info())
+print(titanic_train.columns)
+
+#Data preprocessing
+snb.FacetGrid(titanic_train, hue='Survived',size=8).map(snb.kdeplot,'Age').add_legend()
+age_imputer= preprocessing.Imputer()
+age_imputer.fit(titanic_train[['Age']])
+titanic_train['Age_imputed'] = age_imputer.transform(titanic_train[['Age']])
+
+#Data preprocessing
+snb.FacetGrid(titanic_train, hue='Survived',size=8).map(snb.kdeplot,'Age').add_legend()
+fare_imputer = preprocessing.Imputer()
+fare_imputer.fit(titanic_train[['Fare']])
+
+snb.countplot(x='Embarked',data=titanic_train)
+titanic_train.loc[titanic_train['Embarked'].isnull(), 'Embarked'] = 'S'
+
+#Data preprocessing
+emb_encoder = preprocessing.LabelEncoder()
+emb_encoder.fit(titanic_train['Embarked'])
+titanic_train['Embarked_encoded'] = emb_encoder.transform(titanic_train['Embarked'])
+
+#Feature Creation
+def extract_title(name):
+    return name.split(',')[1].split('.')[0].strip()
+
+titanic_train['Title'] = titanic_train['Name'].map(extract_title)
+snb.countplot(x='Title',data =titanic_train)
+
+#Data preprocessing
+title_encoder = preprocessing.LabelEncoder()
+title_encoder.fit(titanic_train['Title'])
+titanic_train['Title_encoded'] = title_encoder.transform(titanic_train['Title'])
+
+#Feature Creation
+titanic_train['FamilySize'] = titanic_train['SibSp'] + titanic_train['Parch'] + 1
+
+def convert_familySize(size):
+    if(size == 1):
+        return 'Single'
+    elif(size <=5 ):
+        return 'Medium'
+    else:
+        return 'Large'
+    
+titanic_train['FamilyGroup']= titanic_train['FamilySize'].map(convert_familySize)
+snb.factorplot(x = 'FamilyGroup',hue = 'Survived',data = titanic_train, kind='count', size=8)
+
+#Data preprocessing
+fg_encoder = preprocessing.LabelEncoder()
+fg_encoder.fit(titanic_train['FamilyGroup'])
+titanic_train['FamilyGroup_encoded'] = fg_encoder.transform(titanic_train['FamilyGroup'])
+
+#Data preprocessing
+snb.factorplot(x='Sex',hue='Survived',data=titanic_train, kind='count',size=6)
+sex_encoder = preprocessing.LabelEncoder()
+sex_encoder.fit(titanic_train['Sex'])
+titanic_train['Sex_encoded'] = sex_encoder.transform(titanic_train['Sex'])
+
+#Data preprocessing
+snb.factorplot(x='Pclass',hue='Survived',data=titanic_train, kind='count',size=6)
+pclass_encoder = preprocessing.LabelEncoder()
+pclass_encoder.fit(titanic_train['Pclass'])
+titanic_train['Pclass'] = pclass_encoder.transform(titanic_train['Pclass'])
+
+features = ['Pclass','SibSp','Parch','Fare','Age_imputed','Embarked_encoded','Title_encoded','FamilySize','FamilyGroup_encoded','Sex_encoded']
+
+x = titanic_train[features]
+y = titanic_train['Survived']
+
+#Splitting data into train and evaluation data
+X_train,X_eval,Y_train,Y_eval = model_selection.train_test_split(x,y,test_size = 0.1,random_state=1)
+
+#Model Building using TPOT
+tpot_estimator = tpot.TPOTClassifier(generations=10, population_size=40, 
+                                     verbosity=2, early_stop=2, 
+                                     random_state=100,
+                                     cv=5, scoring='accuracy',
+                                     config_dict=None, warm_start=True,
+                                     periodic_checkpoint_folder='D:/Vijaya/Data Science/ML Programs/Kaggle - titanic/checkpoint')
+
+tpot_estimator.fit(X_train,Y_train)
+print(tpot_estimator.evaluated_individuals_)
+print(tpot_estimator.fitted_pipeline_)
+print(tpot_estimator.score(X_train,Y_train))
+print(tpot_estimator.score(X_eval,Y_eval))
+
+#Read test.csv file
+titanic_test = pd.read_csv(os.path.join(dir,'test.csv'))
+print(titanic_test.info())
+print(titanic_test.columns)
+
+#Data preprocessing and feature engineering techniques for test data
+titanic_test['Age_imputed'] = age_imputer.transform(titanic_test[['Age']])
+titanic_test['Fare'] = fare_imputer.transform(titanic_test[['Fare']])
+titanic_test['Embarked_encoded'] = emb_encoder.transform(titanic_test['Embarked'])
+titanic_test['Title'] = titanic_test['Name'].map(extract_title)
+titanic_test.loc[titanic_test['Title']=='Dona','Title'] = 'Mrs'
+titanic_test['Title_encoded'] = title_encoder.transform(titanic_test['Title'])
+titanic_test['FamilySize'] = titanic_test['SibSp'] + titanic_test['Parch'] + 1
+titanic_test['FamilyGroup'] = titanic_test['FamilySize'].map(convert_familySize)
+titanic_test['FamilyGroup_encoded']= fg_encoder.transform(titanic_test['FamilyGroup'])
+titanic_test['Sex_encoded'] = sex_encoder.transform(titanic_test['Sex'])
+titanic_test['Pclass'] = pclass_encoder.transform(titanic_test['Pclass'])
+
+X_test = titanic_test[features]
+
+#Predict target for test data using TPOT
+titanic_test['Survived'] = tpot_estimator.predict(X_test)
+titanic_test.to_csv(os.path.join(dir,'submissionAutoV7.csv'), columns = ['PassengerId','Survived'], index = False)
+
