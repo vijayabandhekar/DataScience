@@ -1,0 +1,48 @@
+import pandas as pd
+import os
+from sklearn import ensemble, model_selection, preprocessing, feature_selection, pipeline, linear_model
+import sys
+sys.path.append("D:/Vijaya/Data Science/GeometricViz/Utils")
+import seaborn as sns
+import numpy as np
+
+##Import train data
+dir="D:/Vijaya/Data Science/ML Programs/Kaggle - Dont Overfit II"
+train = pd.read_csv(os.path.join(dir,'train.csv'))
+print(train.info())
+print(train.columns)
+
+##Seperate the input features from target 
+X= train.iloc[:,2:]
+y= train['target'].astype(int)
+
+sns.countplot(x='target', data=train)
+
+#Slipt data into train and evaluation data
+X_train, X_eval, y_train, y_eval = model_selection.train_test_split(X, y, test_size=0.1, random_state=1)
+
+stages =[('imputer',preprocessing.Imputer()),
+         ('zv_filter',feature_selection.VarianceThreshold()),
+         ('feature_selector',feature_selection.SelectFromModel(ensemble.RandomForestClassifier())),
+         ('classifier',linear_model.LogisticRegression())]
+
+#Build a model using logisticRegression and find out accuracy score for train and evaluation data
+logit_pipeline = pipeline.Pipeline(stages)
+logit_grid = {'feature_selector__threshold':['mean','median'],'classifier__C':[0.001,0.01,0.1,0.5,1],'classifier__penalty':['l1','l2'],'classifier__class_weight':['balanced',None]}
+pipeline_generated_estimator = model_selection.GridSearchCV(logit_pipeline,logit_grid,scoring='roc_auc',cv=10)
+pipeline_generated_estimator.fit(X_train,y_train)
+print(pipeline_generated_estimator.score(X_train,y_train))
+print(pipeline_generated_estimator.score(X_eval,y_eval))
+
+#print(pipeline_generated.score(X_eval,y_eval))
+test = pd.read_csv(os.path.join(dir,'test.csv'))
+print(test.info())
+print(test.columns)
+
+test1 = test.iloc[:,1:]
+print(test1.info())
+
+test['target'] =np.round( pipeline_generated_estimator.predict_proba(test1)[:,1],2)
+test.to_csv(os.path.join(dir,'submissionV7.csv'),columns=['id','target'],index=False)
+
+
