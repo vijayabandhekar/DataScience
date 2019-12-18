@@ -1,0 +1,45 @@
+import pandas as pd
+import os
+from sklearn import model_selection, pipeline, linear_model, feature_selection, preprocessing
+import seaborn as sns
+import sys
+sys.path.append('D:/Vijaya/Data Science/GeometricViz/Utils')
+
+#Import train data
+dir = 'D:/Vijaya/Data Science/ML Programs/Kaggle - Dont Overfit II'
+train = pd.read_csv(os.path.join(dir,'train.csv'))
+print(train.info())
+print(train.columns)
+
+#Seperate the input features from target 
+X = train.iloc[:,2:]
+y = train['target'].astype(int)
+sns.countplot(x='target', data=train)
+
+#Slipt data into train and evaluation data
+X_train, X_eval, y_train, y_eval = model_selection.train_test_split(X,y,test_size=0.1, random_state=1)
+
+#Stages to pass in pipeline
+stages = [('imputer',preprocessing.Imputer()),
+          ('zv_filter',feature_selection.VarianceThreshold()),
+          ('feature_selector',feature_selection.SelectKBest(score_func=feature_selection.f_classif)),
+          ('classifier', linear_model.LogisticRegression())]
+
+#Build a model with logistic regression using above stages in pipeline and find out accuracy score for train and evaluation data
+logit_pipeline =pipeline.Pipeline(stages)
+pipeline_grid  = {'feature_selector__k':[70, 75, 100], 'classifier__C':[0.001, 0.01, 0.1, 0.2, 0.5],'classifier__penalty':['l1', 'l2'], 'classifier__class_weight':['balanced', None]}
+pipeline_generated = model_selection.GridSearchCV(logit_pipeline,pipeline_grid,scoring='roc_auc', cv=10)
+pipeline_generated.fit(X_train,y_train)
+print(pipeline_generated.score(X_train,y_train))
+print(pipeline_generated.score(X_eval,y_eval))
+
+#Import test data
+test = pd.read_csv(os.path.join(dir, 'test.csv'))
+print(test.info())
+print(test.columns)
+
+test1 = test.iloc[:,1:]
+
+#Predict the target for test data and create csv file for output prediction
+test['target']=pipeline_generated.predict_proba(test1)[:,1]
+test.to_csv(os.path.join(dir,'submissionV4.csv'), columns=['id','target'], index=False)
