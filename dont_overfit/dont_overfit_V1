@@ -1,0 +1,55 @@
+import pandas as pd
+import os
+from sklearn import ensemble, model_selection, decomposition, manifold
+import sys
+sys.path.append("D:/Vijaya/Data Science/GeometricViz/Utils")
+import seaborn as sns
+import numpy as np
+
+##Import train data
+dir="D:/Vijaya/Data Science/ML Programs/Kaggle - Dont Overfit II"
+train = pd.read_csv(os.path.join(dir,'train.csv'))
+print(train.info())
+print(train.columns)
+
+##Seperate the input features from target 
+X = train.iloc[:,2:]
+y = train['target']
+sns.countplot(x='target', data=train)
+
+#Feature Selection
+pca = decomposition.PCA(n_components=0.95)
+X1 = pca.fit_transform(X)
+Xtsne = manifold.TSNE(n_components=2)
+X2= Xtsne.fit_transform(X1)
+
+#Slipt data into train and evaluation data
+X_train,X_eval,y_train,y_eval = model_selection.train_test_split(X2,y,test_size=0.1,random_state=1)
+
+#Build a model using RandomForest and find out accuracy score for train and evaluation data
+logit_estimator = ensemble.RandomForestClassifier()
+logit_grid = {'n_estimators':list(range(1,100,2))}
+logit_grid_estimator = model_selection.GridSearchCV(logit_estimator,logit_grid, scoring='roc_auc',cv=10)
+logit_grid_estimator.fit(X_train,y_train)
+print(logit_grid_estimator.score(X_train,y_train))
+print(logit_grid_estimator.score(X_eval,y_eval))
+
+#Import test data
+test = pd.read_csv(os.path.join(dir,'test.csv'))
+print(test.info())
+print(test.columns)
+
+#Data Preprocessing
+test1 = test.iloc[:,1:]
+
+#Some feature engineering techniques for test data as we do the same for train data
+test2 = pca.fit_transform(test1)
+test3 = Xtsne.fit_transform(test2)
+
+#Predict target for test data
+test['target'] = np.round(logit_grid_estimator.predict_proba(test3)[:,1],2)
+
+#Create csv file for Kaggle submission
+test.to_csv(os.path.join(dir,'Submissionv9.csv'), columns=['id','target'], index=False)
+
+
