@@ -1,0 +1,38 @@
+import pandas as pd
+import os
+from sklearn import pipeline, linear_model, model_selection, preprocessing, feature_selection, svm
+import seaborn as sns
+
+
+dir ='D:/Vijaya/Data Science/ML Programs/Kaggle - Dont Overfit II'
+train = pd.read_csv(os.path.join(dir, 'train.csv'))
+print(train.info())
+print(train.columns)
+
+sns.countplot(x='target',data=train)
+
+#filter unique value features
+train1 = train.iloc[:,2:] 
+y = train['target'].astype(int)
+
+X_train, X_eval, y_train, y_eval = model_selection.train_test_split(train1, y, test_size=0.1, random_state=1)
+
+stages = [  ('imputer', preprocessing.Imputer()),
+            ('zv_filter', feature_selection.VarianceThreshold()),
+            ('feature_selector', feature_selection.RFE(svm.LinearSVC(max_iter=10000)) ),
+            ('classifier', linear_model.LogisticRegression())
+        ]
+pipeline = pipeline.Pipeline(stages)
+pipeline_grid  = {'feature_selector__n_features_to_select':[10, 20], 'classifier__C':[0.001, 0.01, 0.1, 0.2, 0.5],'classifier__penalty':['l1', 'l2'], 'classifier__class_weight':['balanced', None]}
+pipeline_generated = model_selection.GridSearchCV(pipeline, pipeline_grid, scoring="roc_auc")
+pipeline_generated.fit(X_train,y_train)
+#final_estimator = pipeline_generated.named_steps['classifier']
+print(pipeline_generated.score(X_eval, y_eval))
+
+test = pd.read_csv(os.path.join(dir, 'test.csv'))
+print(test.info())
+print(test.columns)
+
+test1 = test.iloc[:,1:] 
+test['target'] = pipeline_generated.predict_proba(test1)[:,1]
+test.to_csv(os.path.join(dir, 'submission.csv'), columns=['id', 'target'], index=False)
