@@ -1,0 +1,84 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import os
+from sklearn import model_selection, preprocessing, metrics, neighbors, impute, compose, feature_selection, decomposition, pipeline,linear_model
+import math
+
+dir = 'D:/Vijaya/Data Science/ML Programs/Kaggle - House Sale Price'
+house_train = pd.read_csv(os.path.join(dir,'train.csv'))
+print(house_train.info())
+house_train.shape
+print(house_train.columns)
+
+def get_continuous_features(df):
+    return df.select_dtypes(include=['number']).columns
+
+def get_non_continuous_features(df):
+    return df.select_dtypes(exclude=['number']).columns
+
+def log_rmse(y_orig, y_pred):
+    return math.sqrt(metrics.mean_squared_log_error(y_orig,y_pred) )
+
+def cast_to_cat(df, features):
+    for feature in features:
+        df[feature] = df[feature].astype('category')
+        
+def get_features_to_drop_on_missingdata(df, threshold) :
+    tmp = df.isnull().sum()
+    return list(tmp[tmp/float(df.shape[0]) > threshold].index)
+
+def drop_features(df, features):
+    return df.drop(features, axis=1, inplace=False)
+
+print(get_continuous_features(house_train))
+print(get_non_continuous_features(house_train))
+
+sns.countplot(x='MSSubClass',data=house_train)
+
+features_to_cast = ['OverallQual','MSSubClass','OverallCond','BedroomAbvGr','KitchenAbvGr','TotRmsAbvGrd','YrSold','MoSold','Fireplaces','GarageCars']
+cast_to_cat(house_train,features_to_cast)
+
+features_to_drop = ['Id','SalePrice']
+missing_features_above_threshold = get_features_to_drop_on_missingdata(house_train,0.25)
+features_to_drop.extend(missing_features_above_threshold)
+house_train1 = drop_features(house_train,features_to_drop)
+house_train1.shape
+print(house_train1.info())
+
+categorical_pipeline = pipeline.Pipeline([('cat_imputer',impute.SimpleImputer(strategy='most_frequent')),
+                        ('cat_ohe',preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore'))
+                        ])
+continuos_pipeline = pipeline.Pipeline([('cont_imputer', impute.SimpleImputer()),
+                      ('cont_scaler',preprocessing.StandardScaler())
+                      ])
+
+cont_features = get_continuous_features(house_train1)
+cat_features = get_non_continuous_features(house_train1)
+
+features_preprocessing = compose.ColumnTransformer(
+        transformers=[('cat',categorical_pipeline, cat_features),
+                ('cont', continuos_pipeline, cont_features)
+                ])
+
+scoring = metrics.make_scorer(log_rmse, greater_is_better=False)
+y_train = house_train['SalePrice']
+knn_pipeline = pipeline.Pipeline([('preprocessor',features_preprocessing),
+         ('ZVFilter',feature_selection.VarianceThreshold()),
+         ('f_selector',feature_selection.SelectFromModel(linear_model.Lasso())),
+         ('pca',decomposition.PCA()),
+         ('regressor',neighbors.KNeighborsRegressor())])
+    
+pipeline_grid = {'preprocessor__cont__cont_imputer__strategy':['mean','median'],'pca__n_components':[0.95,0.96],'regressor__n_neighbors':[5,6,7,8,9,10]}
+final_estimator = model_selection.GridSearchCV(knn_pipeline,pipeline_grid,scoring=scoring, cv=10)
+final_estimator.fit(house_train1, y_train)
+
+house_test = pd.read_csv(os.path.join(dir,'test.csv'))
+print(house_test.info())
+house_test['SalePrice'] =None
+
+cast_to_cat(house_test, features_to_cast)
+house_test1 = drop_features(house_test, features_to_drop)
+
+house_test['SalePrice']= np.round(final_estimator.predict(house_test1),2)
+house_test.to_csv(os.path.join(dir,'submissionV2.csv'), columns=['Id','SalePrice'], index=False)
